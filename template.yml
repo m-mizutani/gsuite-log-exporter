@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: https://github.com/m-mizutani/gsuite-log-exporter
+Parameters:
+  SecretArn:
+    Type: String
+  S3Region:
+    Type: String
+  S3Bucket:
+    Type: String
+  S3Prefix:
+    Type: String
+  DlqTopicName:
+    Type: String
+    Default: ""
+  LambdaRoleArn:
+    Type: String
+    Default: ""
+  ReservedConcurrent:
+    Type: Number
+    Default: 5
+
+Conditions:
+  LambdaRoleRequired:
+    Fn::Equals: [ { Ref: LambdaRoleArn }, "" ]
+  IsDefaultDLQName:
+    Fn::Equals: [ { Ref: DlqTopicName }, "" ]
+
+Resources:
+  # --------------------------------------------------------
+  # Lambda functions
+  Main:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: go1.x
+      CodeUri: build
+      Handler: main
+      Timeout: 900
+      Role:
+        Fn::If: [ LambdaRoleRequired, {"Fn::GetAtt": LambdaRole.Arn}, {Ref: LambdaRoleArn} ]
+      DeadLetterQueue:
+        Type: SNS
+        TargetArn:
+          Ref: DLQ
+      ReservedConcurrentExecutions:
+        Ref: ReservedConcurrent
+      MemorySize: 512
+      Environment:
+        Variables:
+          SECRET_ARN:
+            Ref: SecretArn
+          S3_REGION:
+            Ref: S3Region
+          S3_BUCKET:
+            Ref: S3Bucket
+          S3_PREFIX:
+            Ref: S3Prefix
+  DLQ:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName:
+        Fn::If:
+          - IsDefaultDLQName
+          - {"Fn::Sub": [ "sam-gsuite-log-exporter-dlq-${StackName}", { StackName: { "Ref": "AWS::StackName" } } ] }
+          - {"Ref": DlqTopicName}
+
+  # --------------------------------------------------------
+  # IAM Roles
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Condition: LambdaRoleRequired
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: ["lambda.amazonaws.com"]
+            Action: ["sts:AssumeRole"]
+      Path: "/"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+        - PolicyName: "S3Writable"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - Fn::Sub: [ "arn:aws:s3:::${bucket}/${prefix}*", { bucket: { "Ref": S3Bucket }, prefix: {"Ref": S3Prefix} } ]
+        - PolicyName: "PublishDLQ"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource:
+                  - Ref: DLQ
