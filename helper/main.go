@@ -90,6 +90,6 @@ func main() {
 	case "get":
 		fmt.Print(getValue(os.Args[2]))
 	case "oauth":
-		fmt.Println("oauth")
+		saveOAuthToken(os.Args[2], os.Args[3])
 	}
 }
