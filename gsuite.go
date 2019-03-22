@@ -104,11 +104,21 @@ func exportAppLogs(ch chan *queue, srv *admin.Service, app *application, now tim
 func exportLogs(client *http.Client) chan *queue {
 	ch := make(chan *queue)
 
+	// Durations are defined according to data lag times of G Suite.
+	// https://support.google.com/a/answer/7061566
+	/*
+		Admin	Admin audit	near real time (couple of minutes)
+		Login	Login audit	1–2 days
+		Drive	Drive audit	near real time (couple of minutes)
+		Mobile devices	Devices audit	near real time (couple of minutes), up to 4 hours, if updated at next sync.
+		Token	Token audit	a couple of hours
+	*/
+
 	apps := []application{
 		{"admin", time.Minute * 10},
 		{"drive", time.Minute * 10},
-		{"mobile", time.Minute * 10},
-		{"token", time.Minute * 10},
+		{"mobile", time.Hour * 4},
+		{"token", time.Hour * 3},
 		{"login", time.Hour * 48},
 	}
 
