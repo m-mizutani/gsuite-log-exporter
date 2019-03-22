@@ -88,8 +88,12 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
                 Resource:
                   - Fn::Sub: [ "arn:aws:s3:::${bucket}/${prefix}*", { bucket: { "Ref": S3Bucket }, prefix: {"Ref": S3Prefix} } ]
+                  - Fn::Sub: [ "arn:aws:s3:::${bucket}", { bucket: { "Ref": S3Bucket } } ]
+
         - PolicyName: "PublishDLQ"
           PolicyDocument:
             Version: "2012-10-17"
@@ -99,3 +103,15 @@ Resources:
                   - sns:Publish
                 Resource:
                   - Ref: DLQ
+
+        - PolicyName: "ReadSecret"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - Ref: SecretArn
+
+

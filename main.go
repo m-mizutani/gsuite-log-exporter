@@ -7,9 +7,6 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-lambda-go/lambdacontext"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -42,14 +39,12 @@ func Handler(args Arguments) (*Response, error) {
 		return nil, errors.Wrap(err, "Fail to fetch values from SecretsManager")
 	}
 
-	svc := s3.New(session.Must(session.NewSession(&aws.Config{
-		Region: aws.String(args.S3Region),
-	})))
-
 	client, err := setupGoogleClient([]byte(secrets.GSuiteClient), []byte(secrets.GSuiteToken))
 	if err != nil {
 		return nil, err
 	}
+
+	uploader := newS3Uploader(args)
 
 	for q := range exportLogs(client) {
 		if q.err != nil {
@@ -57,7 +52,7 @@ func Handler(args Arguments) (*Response, error) {
 		}
 
 		resp.LogCount++
-		put, err := putLogObject(svc, q, args)
+		put, err := uploader.putLogObject(q)
 		if err != nil {
 			return nil, err
 		}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -43,13 +44,33 @@ func getSecretValues(secretArn string, values interface{}) error {
 	return nil
 }
 
-func putLogObject(svc *s3.S3, q *queue, args Arguments) (bool, error) {
+type s3Uploader struct {
+	svc  *s3.S3
+	args Arguments
+}
+
+func newS3Uploader(args Arguments) *s3Uploader {
+	uploader := new(s3Uploader)
+
+	uploader.svc = s3.New(session.Must(session.NewSession(&aws.Config{
+		Region: aws.String(args.S3Region),
+	})))
+	uploader.args = args
+
+	return uploader
+}
+
+func putWorker(ch chan *queue) {
+
+}
+
+func (x *s3Uploader) putLogObject(q *queue) (bool, error) {
 	s3Key := strings.Join([]string{
-		args.S3Prefix, q.app, q.timestamp.Format("/2006/01/02/15/"),
+		x.args.S3Prefix, q.app, q.timestamp.Format("/2006/01/02/15/"),
 		q.timestamp.Format("20060102_150405_"), q.key, ".json.gz"}, "")
 
-	_, err := svc.HeadObject(&s3.HeadObjectInput{
-		Bucket: &args.S3Bucket,
+	_, err := x.svc.HeadObject(&s3.HeadObjectInput{
+		Bucket: &x.args.S3Bucket,
 		Key:    &s3Key,
 	})
 
@@ -70,9 +91,14 @@ func putLogObject(svc *s3.S3, q *queue, args Arguments) (bool, error) {
 	}
 
 	if !exists {
-		_, err := svc.PutObject(&s3.PutObjectInput{
-			Body:   bytes.NewReader(q.data),
-			Bucket: &args.S3Bucket,
+		var buf bytes.Buffer
+		zw := gzip.NewWriter(&buf)
+		zw.Write(q.data)
+		zw.Close()
+
+		_, err = x.svc.PutObject(&s3.PutObjectInput{
+			Body:   bytes.NewReader(buf.Bytes()),
+			Bucket: &x.args.S3Bucket,
 			Key:    &s3Key,
 		})
 
@@ -81,8 +107,11 @@ func putLogObject(svc *s3.S3, q *queue, args Arguments) (bool, error) {
 		}
 
 		return true, nil
-		fmt.Println("upload")
 	}
 
 	return false, nil
+}
+
+func (x *s3Uploader) wait() error {
+	return nil
 }
