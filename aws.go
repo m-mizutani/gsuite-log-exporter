@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -45,11 +46,15 @@ func getSecretValues(secretArn string, values interface{}) error {
 }
 
 type s3Uploader struct {
-	svc  *s3.S3
-	args Arguments
+	svc     *s3.S3
+	args    Arguments
+	wg      sync.WaitGroup
+	chQueue chan *queue
 }
 
 func newS3Uploader(args Arguments) *s3Uploader {
+	threadNum := 16
+
 	uploader := new(s3Uploader)
 
 	uploader.svc = s3.New(session.Must(session.NewSession(&aws.Config{
@@ -57,61 +62,74 @@ func newS3Uploader(args Arguments) *s3Uploader {
 	})))
 	uploader.args = args
 
+	uploader.chQueue = make(chan *queue, threadNum*2)
+
+	for i := 0; i < threadNum; i++ {
+		uploader.wg.Add(1)
+		go putWorker(uploader.chQueue, args, uploader.svc, &uploader.wg)
+	}
+
 	return uploader
 }
 
-func putWorker(ch chan *queue) {
+func putWorker(chQueue chan *queue, args Arguments, svc *s3.S3, wg *sync.WaitGroup) {
+	defer wg.Done()
 
-}
-
-func (x *s3Uploader) putLogObject(q *queue) (bool, error) {
-	s3Key := strings.Join([]string{
-		x.args.S3Prefix, q.app, q.timestamp.Format("/2006/01/02/15/"),
-		q.timestamp.Format("20060102_150405_"), q.key, ".json.gz"}, "")
-
-	_, err := x.svc.HeadObject(&s3.HeadObjectInput{
-		Bucket: &x.args.S3Bucket,
-		Key:    &s3Key,
-	})
-
-	exists := true
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case s3.ErrCodeNoSuchKey:
-				exists = false
-			case "NotFound":
-				exists = false
-			default:
-				return false, errors.Wrapf(err, "HeadObject error: %s", aerr.Error())
-			}
-		} else {
-			return false, err
+	for {
+		q, ok := <-chQueue
+		if !ok {
+			return
 		}
-	}
 
-	if !exists {
-		var buf bytes.Buffer
-		zw := gzip.NewWriter(&buf)
-		zw.Write(q.data)
-		zw.Close()
+		s3Key := strings.Join([]string{
+			args.S3Prefix, q.app, q.timestamp.Format("/2006/01/02/15/"),
+			q.timestamp.Format("20060102_150405_"), q.key, ".json.gz"}, "")
 
-		_, err = x.svc.PutObject(&s3.PutObjectInput{
-			Body:   bytes.NewReader(buf.Bytes()),
-			Bucket: &x.args.S3Bucket,
+		_, err := svc.HeadObject(&s3.HeadObjectInput{
+			Bucket: &args.S3Bucket,
 			Key:    &s3Key,
 		})
 
+		exists := true
 		if err != nil {
-			return false, errors.Wrapf(err, "Fail to put log object: %s", s3Key)
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				case s3.ErrCodeNoSuchKey:
+					exists = false
+				case "NotFound":
+					exists = false
+				default:
+					logger.WithError(err).Fatalf("HeadObject error: %s", aerr.Error())
+				}
+			} else {
+				logger.WithError(err).Fatalf("HeadObject error")
+			}
 		}
 
-		return true, nil
-	}
+		if !exists {
+			var buf bytes.Buffer
+			zw := gzip.NewWriter(&buf)
+			zw.Write(q.data)
+			zw.Close()
 
-	return false, nil
+			_, err = svc.PutObject(&s3.PutObjectInput{
+				Body:   bytes.NewReader(buf.Bytes()),
+				Bucket: &args.S3Bucket,
+				Key:    &s3Key,
+			})
+
+			if err != nil {
+				logger.WithError(err).Fatalf("Fail to put log object: %s", s3Key)
+			}
+		}
+	}
 }
 
-func (x *s3Uploader) wait() error {
-	return nil
+func (x *s3Uploader) putLogObject(q *queue) {
+	x.chQueue <- q
+}
+
+func (x *s3Uploader) wait() {
+	close(x.chQueue)
+	x.wg.Wait()
 }

@@ -7,7 +7,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/k0kubun/pp"
 	main "github.com/m-mizutani/gsuite-log-exporter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,6 +36,4 @@ func Test(t *testing.T) {
 	resp, err := main.Handler(args)
 	require.NoError(t, err)
 	assert.NotEqual(t, 0, resp.LogCount)
-
-	pp.Println(resp)
 }

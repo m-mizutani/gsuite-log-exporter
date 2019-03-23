@@ -23,7 +23,6 @@ type Arguments struct {
 
 type Response struct {
 	LogCount int
-	PutCount int
 }
 
 type secretValues struct {
@@ -52,13 +51,7 @@ func Handler(args Arguments) (*Response, error) {
 		}
 
 		resp.LogCount++
-		put, err := uploader.putLogObject(q)
-		if err != nil {
-			return nil, err
-		}
-		if put {
-			resp.PutCount++
-		}
+		uploader.putLogObject(q)
 	}
 
 	return &resp, nil

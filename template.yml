@@ -44,7 +44,7 @@ Resources:
           Ref: DLQ
       ReservedConcurrentExecutions:
         Ref: ReservedConcurrent
-      MemorySize: 512
+      MemorySize: 1024
       Environment:
         Variables:
           SECRET_ARN:
@@ -55,6 +55,12 @@ Resources:
             Ref: S3Bucket
           S3_PREFIX:
             Ref: S3Prefix
+      Events:
+        Every5min:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+
   DLQ:
     Type: AWS::SNS::Topic
     Properties:
