@@ -66,3 +66,8 @@ Finally, you can invoke deployment command.
 ```bash
 $ env CONFIG_FILE=config.json make deploy
 ```
+
+## License
+
+- Author: Masayoshi Mizutani < mizutani@sfc.wide.ad.jp >
+- License: The 3-Clause BSD License
