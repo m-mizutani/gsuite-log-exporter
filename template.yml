@@ -38,10 +38,6 @@ Resources:
       Timeout: 900
       Role:
         Fn::If: [ LambdaRoleRequired, {"Fn::GetAtt": LambdaRole.Arn}, {Ref: LambdaRoleArn} ]
-      DeadLetterQueue:
-        Type: SNS
-        TargetArn:
-          Ref: DLQ
       ReservedConcurrentExecutions:
         Ref: ReservedConcurrent
       MemorySize: 1024
@@ -60,15 +56,6 @@ Resources:
           Type: Schedule
           Properties:
             Schedule: rate(5 minutes)
-
-  DLQ:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName:
-        Fn::If:
-          - IsDefaultDLQName
-          - {"Fn::Sub": [ "sam-gsuite-log-exporter-dlq-${StackName}", { StackName: { "Ref": "AWS::StackName" } } ] }
-          - {"Ref": DlqTopicName}
 
   # --------------------------------------------------------
   # IAM Roles
@@ -99,16 +86,6 @@ Resources:
                 Resource:
                   - Fn::Sub: [ "arn:aws:s3:::${bucket}/${prefix}*", { bucket: { "Ref": S3Bucket }, prefix: {"Ref": S3Prefix} } ]
                   - Fn::Sub: [ "arn:aws:s3:::${bucket}", { bucket: { "Ref": S3Bucket } } ]
-
-        - PolicyName: "PublishDLQ"
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - sns:Publish
-                Resource:
-                  - Ref: DLQ
 
         - PolicyName: "ReadSecret"
           PolicyDocument:
