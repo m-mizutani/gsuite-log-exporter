@@ -10,3 +10,5 @@ require (
 	golang.org/x/sys v0.0.0-20190222072716-a9d3bda3a223 // indirect
 	google.golang.org/api v0.2.0
 )
+
+go 1.13
