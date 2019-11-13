@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"os"
+	"time"
 
-	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-lambda-go/lambdacontext"
 	"github.com/pkg/errors"
@@ -15,10 +15,11 @@ var loggerBase = logrus.New()
 var logger = loggerBase.WithFields(logrus.Fields{})
 
 type Arguments struct {
-	SecretArn string `json:"secret_arn"`
-	S3Region  string `json:"s3_region"`
-	S3Bucket  string `json:"s3_bucket"`
-	S3Prefix  string `json:"s3_prefix"`
+	SecretArn string    `json:"secret_arn"`
+	S3Region  string    `json:"s3_region"`
+	S3Bucket  string    `json:"s3_bucket"`
+	S3Prefix  string    `json:"s3_prefix"`
+	BaseTime  time.Time `json:"base_time"`
 }
 
 type Response struct {
@@ -31,6 +32,8 @@ type secretValues struct {
 }
 
 func Handler(args Arguments) (*Response, error) {
+	logger.WithField("args", args).Info("Start Handler")
+
 	var resp Response
 	var secrets secretValues
 
@@ -45,7 +48,7 @@ func Handler(args Arguments) (*Response, error) {
 
 	uploader := newS3Uploader(args)
 
-	for q := range exportLogs(client) {
+	for q := range exportLogs(client, args.BaseTime) {
 		if q.err != nil {
 			return nil, q.err
 		}
@@ -57,7 +60,11 @@ func Handler(args Arguments) (*Response, error) {
 	return &resp, nil
 }
 
-func handleRequest(ctx context.Context, event events.S3Event) error {
+type handlerEvent struct {
+	BaseTime *time.Time `json:"base_time"`
+}
+
+func handleRequest(ctx context.Context, event handlerEvent) error {
 	lc, _ := lambdacontext.FromContext(ctx)
 	logger = loggerBase.WithField("request_id", lc.AwsRequestID)
 
@@ -68,6 +75,11 @@ func handleRequest(ctx context.Context, event events.S3Event) error {
 		S3Region:  os.Getenv("S3_REGION"),
 		S3Bucket:  os.Getenv("S3_BUCKET"),
 		S3Prefix:  os.Getenv("S3_PREFIX"),
+		BaseTime:  time.Now().UTC(),
+	}
+
+	if event.BaseTime != nil {
+		args.BaseTime = (*event.BaseTime).UTC()
 	}
 
 	resp, err := Handler(args)

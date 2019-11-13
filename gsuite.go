@@ -101,7 +101,7 @@ func exportAppLogs(ch chan *queue, srv *admin.Service, app *application, now tim
 	}
 }
 
-func exportLogs(client *http.Client) chan *queue {
+func exportLogs(client *http.Client, baseTime time.Time) chan *queue {
 	ch := make(chan *queue)
 
 	// Durations are defined according to data lag times of G Suite.
@@ -122,8 +122,6 @@ func exportLogs(client *http.Client) chan *queue {
 		{"login", time.Hour * 48},
 	}
 
-	now := time.Now().UTC()
-
 	go func() {
 		srv, err := admin.New(client)
 		if err != nil {
@@ -137,7 +135,7 @@ func exportLogs(client *http.Client) chan *queue {
 			wg.Add(1)
 
 			go func(app *application) {
-				exportAppLogs(ch, srv, app, now)
+				exportAppLogs(ch, srv, app, baseTime)
 				wg.Done()
 			}(&apps[idx])
 		}
